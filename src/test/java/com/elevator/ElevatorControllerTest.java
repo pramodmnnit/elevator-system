@@ -14,7 +14,7 @@ public class ElevatorControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new ElevatorController(NUM_ELEVATORS, MIN_FLOOR, MAX_FLOOR);
+        controller = ElevatorController.getInstance(NUM_ELEVATORS, MIN_FLOOR, MAX_FLOOR);
     }
 
     @AfterEach
@@ -95,5 +95,47 @@ public class ElevatorControllerTest {
         for (Elevator elevator : elevators) {
             assertTrue(elevator.getDestinationFloors().isEmpty());
         }
+    }
+
+    @Test
+    void testStrategyPattern() {
+        // Create a simple strategy that always returns the first elevator
+        SchedulingStrategy testStrategy = (elevators, request) -> elevators.get(0);
+
+        // Set the test strategy
+        controller.setSchedulingStrategy(testStrategy);
+
+        // Make a request
+        Request request = new Request(0, 5);
+        controller.requestElevator(request);
+
+        // Verify that the first elevator was selected
+        List<Elevator> elevators = controller.getElevators();
+        assertTrue(elevators.get(0).getDestinationFloors().contains(0) || 
+                  elevators.get(0).getDestinationFloors().contains(5));
+    }
+
+    @Test
+    void testFactoryPattern() {
+        // Create a test factory that creates elevators with a specific ID
+        ElevatorFactory testFactory = new ElevatorFactory() {
+            @Override
+            public Elevator createElevator(int minFloor, int maxFloor) {
+                Elevator elevator = new Elevator(minFloor, maxFloor);
+                // We can add test-specific behavior here
+                return elevator;
+            }
+        };
+
+        // Set the test factory
+        controller.setElevatorFactory(testFactory);
+
+        // Create a new elevator using the factory
+        Elevator elevator = testFactory.createElevator(MIN_FLOOR, MAX_FLOOR);
+        
+        // Verify the elevator was created with correct parameters
+        assertEquals(MIN_FLOOR, elevator.getCurrentFloor());
+        assertEquals(Direction.IDLE, elevator.getDirection());
+        assertEquals(ElevatorState.STOPPED, elevator.getState());
     }
 } 

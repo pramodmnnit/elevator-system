@@ -10,7 +10,7 @@ public class ElevatorSystem {
     public ElevatorSystem(int numElevators, int minFloor, int maxFloor) {
         logger.log(Level.INFO, "Initializing elevator system with {0} elevators, floors {1} to {2}", 
             new Object[]{numElevators, minFloor, maxFloor});
-        this.controller = new ElevatorController(numElevators, minFloor, maxFloor);
+        this.controller = ElevatorController.getInstance(numElevators, minFloor, maxFloor);
     }
 
     public void requestElevator(int sourceFloor, int destinationFloor) {

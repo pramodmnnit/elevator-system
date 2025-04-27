@@ -120,15 +120,32 @@ public class Elevator implements Runnable {
         }
     }
 
+    public void clearDestinations() {
+        synchronized (lock) {
+            destinationFloors.clear();
+            direction = Direction.IDLE;
+            state = ElevatorState.STOPPED;
+        }
+    }
+
     public void shutdown() {
-        running = false;
-        logger.log(Level.INFO, "Elevator {0} shutting down", id);
+        synchronized (lock) {
+            running = false;
+            clearDestinations();
+            logger.log(Level.INFO, "Elevator {0} shutting down", id);
+        }
     }
 
     @Override
     public void run() {
         logger.log(Level.INFO, "Elevator {0} thread started", id);
         while (running) {
+            synchronized (lock) {
+                if (destinationFloors.isEmpty()) {
+                    direction = Direction.IDLE;
+                    state = ElevatorState.STOPPED;
+                }
+            }
             move();
             try {
                 Thread.sleep(1000);

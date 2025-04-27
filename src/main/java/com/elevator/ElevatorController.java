@@ -9,20 +9,53 @@ import java.util.logging.Level;
 
 public class ElevatorController {
     private static final Logger logger = Logger.getLogger(ElevatorController.class.getName());
+    private static volatile ElevatorController instance; // Singleton instance
+
     private List<Elevator> elevators;
     private ExecutorService executorService;
     private final Object lock = new Object();
+    private SchedulingStrategy schedulingStrategy;
+    private ElevatorFactory elevatorFactory;
 
-    public ElevatorController(int numElevators, int minFloor, int maxFloor) {
+    // Make constructor private for Singleton
+    private ElevatorController(int numElevators, int minFloor, int maxFloor) {
         logger.log(Level.INFO, "Creating elevator controller with {0} elevators", numElevators);
         this.elevators = new ArrayList<>();
         this.executorService = Executors.newFixedThreadPool(numElevators);
+        this.schedulingStrategy = new SCANStrategy(); // Default strategy
+        this.elevatorFactory = new StandardElevatorFactory(); // Default factory
         
         for (int i = 0; i < numElevators; i++) {
-            Elevator elevator = new Elevator(minFloor, maxFloor);
+            Elevator elevator = elevatorFactory.createElevator(minFloor, maxFloor);
             elevators.add(elevator);
             executorService.submit(elevator);
             logger.log(Level.INFO, "Elevator {0} started", i + 1);
+        }
+    }
+
+    // Thread-safe Singleton accessor
+    public static ElevatorController getInstance(int numElevators, int minFloor, int maxFloor) {
+        if (instance == null) {
+            synchronized (ElevatorController.class) {
+                if (instance == null) {
+                    instance = new ElevatorController(numElevators, minFloor, maxFloor);
+                }
+            }
+        }
+        return instance;
+    }
+
+    public void setSchedulingStrategy(SchedulingStrategy strategy) {
+        synchronized (lock) {
+            this.schedulingStrategy = strategy;
+            logger.info("Scheduling strategy changed to: " + strategy.getClass().getSimpleName());
+        }
+    }
+
+    public void setElevatorFactory(ElevatorFactory factory) {
+        synchronized (lock) {
+            this.elevatorFactory = factory;
+            logger.info("Elevator factory changed to: " + factory.getClass().getSimpleName());
         }
     }
 
@@ -30,7 +63,8 @@ public class ElevatorController {
         synchronized (lock) {
             logger.log(Level.INFO, "Processing new request: Floor {0} -> Floor {1}", 
                 new Object[]{request.getSourceFloor(), request.getDestinationFloor()});
-            Elevator bestElevator = findBestElevator(request);
+            
+            Elevator bestElevator = schedulingStrategy.selectElevator(elevators, request);
             if (bestElevator != null) {
                 logger.log(Level.INFO, "Assigned request to elevator at floor {0}", 
                     bestElevator.getCurrentFloor());
@@ -42,50 +76,11 @@ public class ElevatorController {
         }
     }
 
-    private Elevator findBestElevator(Request request) {
-        Elevator bestElevator = null;
-        int minCost = Integer.MAX_VALUE;
-
-        for (Elevator elevator : elevators) {
-            if (elevator.getState() == ElevatorState.MAINTENANCE) {
-                continue;
-            }
-
-            int cost = calculateCost(elevator, request);
-            if (cost < minCost) {
-                bestElevator = elevator;
-                minCost = cost;
-            }
-        }
-
-        return bestElevator;
-    }
-
-    private int calculateCost(Elevator elevator, Request request) {
-        int currentFloor = elevator.getCurrentFloor();
-        Direction currentDirection = elevator.getDirection();
-        int sourceFloor = request.getSourceFloor();
-
-        // Base cost is the distance to source floor
-        int cost = Math.abs(currentFloor - sourceFloor);
-
-        // If elevator is idle, that's all we need
-        if (currentDirection == Direction.IDLE) {
-            return cost;
-        }
-
-        // If elevator is moving and has destinations, add a large penalty
-        if (!elevator.getDestinationFloors().isEmpty()) {
-            cost += 10000;
-        }
-
-        return cost;
-    }
-
     public void shutdown() {
         synchronized (lock) {
             logger.info("Shutting down elevator controller");
             for (Elevator elevator : elevators) {
+                elevator.clearDestinations();
                 elevator.shutdown();
             }
             executorService.shutdown();
